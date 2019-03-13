@@ -4,4 +4,3 @@
 
 [Ropsten](https://ropsten.etherscan.io/address/0xac0af8b6c98cbe0c533bc99287a9288e8ba6117c#code)
 
-[Medium Article](https://medium.com/@dillonkellar/better-name-service-than-ens-oh-and-theres-email-address-support-d43e2f807243)
