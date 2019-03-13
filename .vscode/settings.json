@@ -8,6 +8,7 @@
     "security/no-send": "off",
     "security/no-assign-params": "off"
   },
+  "solidity.validationDelay": 500,
   "editor.tabSize": 2,
   "editor.detectIndentation": false
 }

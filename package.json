@@ -1,7 +1,7 @@
 {
-  "name": "bns",
+  "name": "BetterNameService",
   "version": "1.0.0",
-  "description": "",
+  "description": "Better name service than ENS, also supports email addresses",
   "main": "compile.js",
   "scripts": {
     "build": "node compile.js",
