@@ -2,7 +2,7 @@
   "name": "bns.js",
   "version": "1.0.0",
   "description": "Better name service than ENS, also supports email addresses",
-  "main": "compile.js",
+  "main": "js/index.js",
   "scripts": {
     "build": "node compile.js",
     "test": "mocha --timeout 9000 -- ./test.js",
