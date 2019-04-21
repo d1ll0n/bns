@@ -7,7 +7,6 @@ const BNS = require('./bns')
 
 const { bnsInterface, bnsBytecode } = require('../compile')
 const abi = JSON.parse(bnsInterface)
-// fs.writeFileSync('./abi.json', abi)
 
 let bns, ethAccounts, ethAccountMaster;
 
@@ -24,7 +23,7 @@ beforeEach(async () => {
   bns = new BNS(web3, ethAccountMaster, abi, contract.address)
 })
 
-describe('Testing BNS.js', () => {
+describe('Testing bns.js', () => {
   describe('top level domain creation', () => {
     it('should create a new TLD', async () => {
       await bns.createTopLevelDomain('dmn')
