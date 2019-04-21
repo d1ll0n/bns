@@ -5,18 +5,19 @@
   "main": "compile.js",
   "scripts": {
     "build": "node compile.js",
-    "test": "mocha --timeout 9000 -- test.js"
+    "test": "mocha --timeout 9000 -- ./test.js",
+    "test:js": "mocha --timeout 9000 ./js/test.js"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "chai": "^4.2.0",
+    "mocha": "^6.0.2",
     "solc": "^0.4.25",
     "solium": "^1.2.3"
   },
   "dependencies": {
     "ganache-cli": "^6.4.1",
-    "mocha": "^6.0.2",
     "web3": "^1.0.0-beta.48"
   }
 }

@@ -40,19 +40,17 @@ library BnsLib {
   struct Domain {
     address owner;
     bool allowSubdomains;
-    bytes content;
+    string content;
     mapping(string => string) domainStorage;
     mapping(address => bool) approvedForSubdomain;
   }
 
-  function hasOnlyDomainLevelCharacters(string memory str) internal pure returns (bool) {
-    /* [9-0] [A-Z] [a-z] [-] */
-    bytes memory b = bytes(str);
-    for(uint i; i<b.length; i++) {
-      bytes1 char = b[i];
+  function hasOnlyDomainLevelCharacters(bytes memory self) internal pure returns (bool) {
+    /* [9-0] [a-z] [-] */
+    for(uint i; i<self.length; i++) {
+      bytes1 char = self[i];
       if (! (
         (char >= 0x30 && char <= 0x39) ||
-        (char >= 0x41 && char <= 0x5A) ||
         (char >= 0x61 && char <= 0x7A) ||
         (char == 0x2d)
       )) return false;
@@ -60,37 +58,44 @@ library BnsLib {
     return true;
   }
 
-  function strictJoin(string memory self, string memory s2, bytes1 delimiter) 
-  internal pure returns (string memory) {
+  function join(bytes memory self, bytes memory s2, bytes1 delimiter) 
+  internal pure returns (bytes memory) {
     /* Allow [0-9] [a-z] [-] Make [A-Z] lowercase */
-    bytes memory orig = bytes(self);
     bytes memory addStr = bytes(s2);
-    uint retSize = orig.length + addStr.length + 1;
+    uint retSize = self.length + addStr.length + 1;
     bytes memory ret = new bytes(retSize);
-    for (uint i = 0; i < orig.length; i ++) {
+    for (uint i = 0; i < self.length; i ++) ret[i] = self[i];
+    ret[self.length] = delimiter;
+    for (uint x = 0; x < addStr.length; x ++) {
+      ret[self.length + x + 1] = addStr[x];
+    }
+    return bytes(ret);
+  }
+
+  function toLowercase(string memory self, bool allowDecimal, bool allowAt) 
+  internal pure returns (bytes memory) {
+    bytes memory s1 = bytes(self);
+    bytes memory ret = new bytes(s1.length);
+    for (uint i = 0; i < s1.length; i ++) {
       require(
-        (orig[i] >= 0x30 && orig[i] <= 0x39) || // 0-9
-        (orig[i] >= 0x41 && orig[i] <= 0x5A) || // A-Z
-        (orig[i] >= 0x61 && orig[i] <= 0x7A) || // a-z
-        (orig[i] == 0x2d || orig[i] == 0x5f), // -  _
+        (s1[i] >= 0x30 && s1[i] <= 0x39) || // 0-9
+        (s1[i] >= 0x41 && s1[i] <= 0x5A) || // A-Z
+        (s1[i] >= 0x61 && s1[i] <= 0x7A) || // a-z
+        (s1[i] == 0x2d || s1[i] == 0x5f ) ||
+        (allowDecimal && s1[i] == 0x2e) ||
+        (allowAt && s1[i] == 0x40), // -  _
         "Invalid character."
       );
-      if (orig[i] >= 0x41 && orig[i] <= 0x5A) ret[i] = bytes1(uint8(orig[i]) + 32);
-      else ret[i] = orig[i];
+      if (s1[i] >= 0x41 && s1[i] <= 0x5A) ret[i] = bytes1(uint8(s1[i]) + 32);
+      else ret[i] = s1[i];
     }
-    ret[orig.length] = delimiter;
-    for (uint x = 0; x < addStr.length; x ++) {
-      if (addStr[x] >= 0x41 && addStr[x] <= 0x5A)
-        ret[orig.length + x + 1] = bytes1(uint8(addStr[x]) + 32);
-      else ret[orig.length + x + 1] = addStr[x];
-    }
-    return string(ret);
+    return ret;
   }
 }
 
 contract BetterNameService {
   using BnsLib for *;
-  using SafeMath for uint;  
+  using SafeMath for uint;
 
 
   constructor() public {
@@ -103,8 +108,9 @@ contract BetterNameService {
   uint updateAfter = 15000; // target around 1 update per day
   uint minPrice = 10000000000000000; // 0.01 eth
 
-  mapping(string => BnsLib.TopLevelDomain) internal tldPrices;
-  mapping(string => BnsLib.Domain) domains; // domain and subdomain owners
+  mapping(bytes => BnsLib.TopLevelDomain) internal tldPrices;
+  mapping(bytes => BnsLib.Domain) domains; // domain and subdomain owners
+  mapping(address => bytes[]) public ownedDomains;
 
 
   function withdraw(uint amount) public {
@@ -119,46 +125,40 @@ contract BetterNameService {
 
 
 /*----------------<BEGIN MODIFIERS>----------------*/
-  modifier tldExists(string memory tld) {
-    require(tldPrices[tld].exists, "TLD does not exist");
-    _;
+  function tldExists(bytes memory tld) public view returns (bool) {
+    return tldPrices[tld].exists;
   }
 
-  modifier tldNotExists(string memory tld) {
-    require(!tldPrices[tld].exists, "TLD exists");
-    _;
+  function tldNotExists(bytes memory tld) public view returns (bool) {
+    return !tldPrices[tld].exists;
   }
 
-  modifier domainExists(string memory domain) {
+  modifier domainExists(bytes memory domain) {
     require(
       domains[domain].owner != address(0) &&
-      domains[domain].owner != address(0x01), 
-      "Domain does not exist or has been invalidated.");
-    _;
-  }
-
-  modifier domainNotExists(string memory domain) {
-    require(domains[domain].owner == address(0), "Domain exists");
-    _;
-  }
-
-  modifier onlyDomainOwner(string memory domain) {
-    require(msg.sender == domains[domain].owner, "Not owner of domain");
-    _;
-  }
-
-  modifier onlyAllowed(string memory domain) {
-    require(
-      domains[domain].allowSubdomains ||
-      domains[domain].owner == msg.sender ||
-      domains[domain].approvedForSubdomain[msg.sender],
-      "Not allowed to register subdomain."
+      domains[domain].owner != address(0x01),
+      "Domain does not exist"
     );
     _;
   }
 
-  modifier onlyDomainLevelCharacters(string memory domainLevel) {
-    require(BnsLib.hasOnlyDomainLevelCharacters(domainLevel), "Invalid characters");
+  modifier domainNotExists(bytes memory domain) {
+    require(domains[domain].owner == address(0), "Domain exists");
+    _;
+  }
+
+  modifier onlyDomainOwner(bytes memory domain) {
+    require(msg.sender == domains[domain].owner, "Not domain owner");
+    _;
+  }
+
+  modifier onlyAllowed(bytes memory domain) {
+    require(
+      domains[domain].allowSubdomains ||
+      domains[domain].owner == msg.sender ||
+      domains[domain].approvedForSubdomain[msg.sender],
+      "User not approved for domain"
+    );
     _;
   }
 /*----------------</END MODIFIERS>----------------*/
@@ -166,34 +166,44 @@ contract BetterNameService {
 
 
 /*----------------<BEGIN EVENTS>----------------*/
-  event TopLevelDomainCreated(bytes32 indexed tldHash, string tld);
-  event TopLevelDomainPriceUpdated(bytes32 indexed tldHash, string tld, uint price);
+  event TopLevelDomainCreated(bytes32 indexed tldHash, bytes tld);
+  event TopLevelDomainPriceUpdated(bytes32 indexed tldHash, bytes tld, uint price);
 
   event DomainRegistered(bytes32 indexed domainHash, 
-  string domain, address owner, 
+  bytes domain, address owner, 
   address registeredBy, bool open);
 
-  event SubdomainInvalidated(bytes32 indexed subdomainHash, 
-  string subdomain, address invalidatedBy);
+  event SubdomainDeleted(bytes32 indexed subdomainHash, 
+  bytes subdomain, address deletedBy);
 
-  event DomainRegistrationOpened(bytes32 indexed domainHash, string domain);
-  event DomainRegistrationClosed(bytes32 indexed domainHash, string domain);
+  event DomainRegistrationOpened(bytes32 indexed domainHash, bytes domain);
+  event DomainRegistrationClosed(bytes32 indexed domainHash, bytes domain);
 
-  event ApprovedForDomain(bytes32 indexed domainHash, string domain, address indexed approved);
+  event ApprovedForDomain(bytes32 indexed domainHash, bytes domain, address indexed approved);
   event DisapprovedForDomain(bytes32 indexed domainHash, 
-  string domain, address indexed disapproved);
+  bytes domain, address indexed disapproved);
 
-  event ContentUpdated(bytes32 indexed domainHash, string domain, bytes content);
+  event ContentUpdated(bytes32 indexed domainHash, bytes domain, string content);
 /*----------------</END EVENTS>----------------*/
 
 
 
 /*----------------<BEGIN VIEW FUNCTIONS>----------------*/
-  function getTldPrice(string tld) public view returns (uint) {
+  function reverseLookup(address owner) public view returns (string[] memory) {
+    bytes[] memory ownedB = ownedDomains[owner];
+    string[] memory _owned = new string[](ownedB.length);
+    for (uint i = 0; i < ownedB.length; i++) {
+      _owned[i] = string(ownedB[i]);
+    }
+    return _owned;
+  }
+
+  function getTldPrice(string memory _tld) public view returns (uint) {
+    bytes memory tld = _tld.toLowercase(false, false);
     return tldPrices[tld].min ? minPrice : tldPrices[tld].price;
   }
 
-  function expectedTldPrice(string tld) public view returns (uint) {
+  function expectedTldPrice(bytes memory tld) public view returns (uint) {
     if (tldPrices[tld].min) return minPrice;
     uint blockCount = block.number.sub(tldPrices[tld].lastUpdate);
     if (blockCount >= updateAfter) {
@@ -204,39 +214,39 @@ contract BetterNameService {
     }
     return tldPrices[tld].price;
   }
-
-  function getDomainOwner(string domain) public view returns (address) {
-    return domains[domain].owner;
+  function getDomainOwner(string memory domain) public view returns (address) {
+    return domains[domain.toLowercase(true, true)].owner;
   }
 
   function isPublicDomainRegistrationOpen(string memory domain) public view returns (bool) {
-    return domains[domain].allowSubdomains;
+    return domains[domain.toLowercase(true, true)].allowSubdomains;
   }
   
   function isApprovedToRegister(string memory domain, address addr) 
   public view returns (bool) {
-    return domains[domain].allowSubdomains || 
-      domains[domain].owner == addr || 
-      domains[domain].approvedForSubdomain[addr];
+    return domains[domain.toLowercase(true, true)].allowSubdomains || 
+      domains[domain.toLowercase(true, true)].owner == addr || 
+      domains[domain.toLowercase(true, true)].approvedForSubdomain[addr];
   }
 
-  function isDomainInvalidated(string memory domain) public view returns(bool) {
-    return domains[domain].owner == address(0x01);
+  function isDomainDeleted(string memory domain) public view returns(bool) {
+    return domains[domain.toLowercase(true, true)].owner == address(0x01);
   }
 
-  function getContent(string memory domain) public view returns (bytes) {
-    return domains[domain].content;
+  function getContent(string memory domain) public view returns (string memory) {
+    return domains[domain.toLowercase(true, true)].content;
   }
 
 
   /*<BEGIN STORAGE FUNCTIONS>*/
-  function getDomainStorageSingle(string domain, string key) 
-  public view domainExists(domain) returns (string) {
-    return domains[domain].domainStorage[key];
+  function getDomainStorageSingle(string memory domain, string memory key) 
+  public view returns (string memory) {
+    return domains[domain.toLowercase(true, true)].domainStorage[key];
   }
 
-  function getDomainStorageMany(string domain, string[] memory keys) 
-  public view domainExists(domain) returns (string[2][]) {
+  function getDomainStorageMany(string memory _domain, string[] memory keys) 
+  public view returns (string[2][]) {
+    bytes memory domain = _domain.toLowercase(true, true);
     string[2][] memory results = new string[2][](keys.length);
     for(uint i = 0; i < keys.length; i++) {
       string memory key = keys[i];
@@ -254,7 +264,7 @@ contract BetterNameService {
     if (msg.value > price) msg.sender.transfer(msg.value.sub(price));
   }
 
-  function updateTldPrice(string memory tld) public returns (uint) {
+  function updateTldPrice(bytes memory tld) public returns (uint) {
     if (!tldPrices[tld].min) {
       // tld price has not reached the minimum price
       uint price = expectedTldPrice(tld);
@@ -279,8 +289,10 @@ contract BetterNameService {
 
 /*----------------<BEGIN DOMAIN REGISTRATION FUNCTIONS>----------------*/
   /*<BEGIN TLD FUNCTIONS>*/
-  function createTopLevelDomain(string memory tld) 
-  public tldNotExists(tld) onlyDomainLevelCharacters(tld) {
+  function createTopLevelDomain(string memory _tld) 
+  public {
+    bytes memory tld = _tld.toLowercase(false, false);
+    require(!tldPrices[tld].exists, "TLD exists");
     tldPrices[tld] = BnsLib.TopLevelDomain({
       price: 5000000000000000000,
       lastUpdate: block.number,
@@ -293,25 +305,29 @@ contract BetterNameService {
 
 
   /*<BEGIN INTERNAL REGISTRATION FUNCTIONS>*/
-  function _register(string memory domain, address owner, bool open) 
+  function _register(bytes memory domain, address owner, bool open) 
   internal domainNotExists(domain) {
     domains[domain].owner = owner;
     emit DomainRegistered(keccak256(abi.encode(domain)), domain, owner, msg.sender, open);
     if (open) domains[domain].allowSubdomains = true;
+    ownedDomains[owner].push(domain);
   }
 
-  function _registerDomain(string memory domain, string memory tld, bool open) 
-  internal tldExists(tld) {
+  function _registerDomain(string memory _domain, string memory _tld, bool open) 
+  internal {
+    bytes memory tld = _tld.toLowercase(false, false);
+    require(tldExists(tld), "TLD does not exist");
+    bytes memory domain = _domain.toLowercase(false, false);
     uint price = updateTldPrice(tld);
     require(msg.value >= price, "Insufficient price.");
-    _register(domain.strictJoin(tld, 0x40), msg.sender, open);
+    _register(domain.join(tld, 0x40), msg.sender, open);
     returnRemainder(price);
   }
 
   function _registerSubdomain(
-    string memory subdomain, string memory domain, address owner, bool open) 
-  internal onlyAllowed(domain) {
-    _register(subdomain.strictJoin(domain, 0x2e), owner, open);
+    bytes memory subdomain, bytes memory domain, address owner, bool open) 
+  internal domainExists(domain) onlyAllowed(domain) {
+    _register(subdomain.join(domain, 0x2e), owner, open);
   }
   /*</END INTERNAL REGISTRATION FUNCTIONS>*/
 
@@ -328,13 +344,18 @@ contract BetterNameService {
 
 
   /*<BEGIN SUBDOMAIN REGISTRATION OVERLOADS>*/
-  function registerSubdomain(string memory subdomain, string memory domain, bool open) public {
+  function registerSubdomain(string memory _subdomain, string memory _domain, bool open) public {
+    bytes memory subdomain = _subdomain.toLowercase(false, false);
+    bytes memory domain = _domain.toLowercase(true, true);
     _registerSubdomain(subdomain, domain, msg.sender, open);
   }
 
   function registerSubdomainAsDomainOwner(
-    string memory subdomain, string memory domain, address subdomainOwner) 
-  public onlyDomainOwner(domain) {
+    string memory _subdomain, string memory _domain, address subdomainOwner) 
+  public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
+    bytes memory subdomain = _subdomain.toLowercase(false, false);
     _registerSubdomain(subdomain, domain, subdomainOwner, false);
   }
   /*</END SUBDOMAIN REGISTRATION OVERLOADS>*/
@@ -343,18 +364,24 @@ contract BetterNameService {
 
 
 /*----------------<BEGIN DOMAIN MANAGEMENT FUNCTIONS>----------------*/
-  function transferDomain(string domain, address recipient) public onlyDomainOwner(domain) {
+  function transferDomain(string memory _domain, address recipient) public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].owner = recipient;
   }
 
   /*<BEGIN CONTENT HASH FUNCTIONS>*/
-  function setContent(string memory domain, bytes memory content) 
-  public onlyDomainOwner(domain) {
+  function setContent(string memory _domain, string memory content) 
+  public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].content = content;
     emit ContentUpdated(keccak256(abi.encode(domain)), domain, content);
   }
 
-  function deleteContent(string memory domain) public onlyDomainOwner(domain) {
+  function deleteContent(string memory _domain) public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     delete domains[domain].content;
     emit ContentUpdated(keccak256(abi.encode(domain)), domain, domains[domain].content);
   }
@@ -362,43 +389,56 @@ contract BetterNameService {
 
 
   /*<BEGIN APPROVAL FUNCTIONS>*/
-  function approveForSubdomain(string memory domain, address user) public onlyDomainOwner(domain) {
+  function approveForSubdomain(string memory _domain, address user) public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].approvedForSubdomain[user] = true;
     emit ApprovedForDomain(keccak256(abi.encode(domain)), domain, user);
   }
 
-  function disapproveForSubdomain(string memory domain, address user) 
-  public onlyDomainOwner(domain) {
+  function disapproveForSubdomain(string memory _domain, address user) 
+  public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].approvedForSubdomain[user] = false;
     emit DisapprovedForDomain(keccak256(abi.encode(domain)), domain, user);
   }
   /*</END APPROVAL FUNCTIONS>*/
 
 
-  /*<BEGIN INVALIDATION FUNCTIONS>*/
-  function _invalidateDomain(string memory domain) internal {
+  /*<BEGIN DELETION FUNCTIONS>*/
+  function _deleteDomain(bytes memory domain) internal {
     domains[domain].owner = address(0x01);
-    emit SubdomainInvalidated(keccak256(abi.encode(domain)), domain, msg.sender);
+    emit SubdomainDeleted(keccak256(abi.encode(domain)), domain, msg.sender);
   }
 
-  function invalidateDomain(string memory domain) public onlyDomainOwner(domain) {
-    _invalidateDomain(domain);
+  function deleteDomain(string memory _domain) public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
+    _deleteDomain(domain);
   }
 
-  function invalidateSubdomainAsDomainOwner(string memory subdomain, string memory domain) 
-  public onlyDomainOwner(domain) {
-    _invalidateDomain(subdomain.strictJoin(domain, "."));
+  function deleteSubdomainAsDomainOwner(string memory _subdomain, string memory _domain) 
+  public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    bytes memory subdomain = _subdomain.toLowercase(false, false);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
+    _deleteDomain(subdomain.join(domain, 0x2e));
   }
-  /*</END INVALIDATION FUNCTIONS>*/
+  /*</END DELETION FUNCTIONS>*/
 
 
   /*<BEGIN RESTRICTION FUNCTIONS>*/
-  function openPublicDomainRegistration(string domain) public onlyDomainOwner(domain) {
+  function openPublicDomainRegistration(string memory _domain) public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].allowSubdomains = true;
     emit DomainRegistrationOpened(keccak256(abi.encode(domain)), domain);
   }
 
-  function closePublicDomainRegistration(string domain) public onlyDomainOwner(domain) {
+  function closePublicDomainRegistration(string memory _domain) public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].allowSubdomains = false;
     emit DomainRegistrationClosed(keccak256(abi.encode(domain)), domain);
   }
@@ -406,13 +446,17 @@ contract BetterNameService {
 
 
   /*<BEGIN STORAGE FUNCTIONS>*/
-  function setDomainStorageSingle(string memory domain, string memory key, string memory value) 
-  public onlyDomainOwner(domain) {
+  function setDomainStorageSingle(string memory _domain, string memory key, string memory value) 
+  public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     domains[domain].domainStorage[key] = value;
   }
 
-  function setDomainStorageMany(string memory domain, string[2][] memory kvPairs) 
-  public onlyDomainOwner(domain) {
+  function setDomainStorageMany(string memory _domain, string[2][] memory kvPairs) 
+  public {
+    bytes memory domain = _domain.toLowercase(true, true);
+    require(domains[domain].owner == msg.sender, "Not domain owner");
     for(uint i = 0; i < kvPairs.length; i++) {
       domains[domain].domainStorage[kvPairs[i][0]] = kvPairs[i][1];
     }

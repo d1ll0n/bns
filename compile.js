@@ -9,8 +9,12 @@ const input = {
 };
 
 compileOutput = solc.compile(input, 1);
+console.log(compileOutput.errors)
 const contract = compileOutput.contracts['BetterNameService.sol:BetterNameService']
 const bnsInterface = contract.interface;
 const bnsBytecode = contract.bytecode;
-fs.writeFileSync('build/abi.json', bnsInterface)
-fs.writeFileSync('build/bytecode.bin', bnsBytecode)
+
+module.exports = {
+  bnsInterface,
+  bnsBytecode
+}
