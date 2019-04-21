@@ -160,6 +160,10 @@ contract BetterNameService {
     );
     _;
   }
+
+  function requireOwner(bytes memory domain, address addr) internal {
+    require(domains[domain].owner == addr, "Not domain owner.");
+  }
 /*----------------</END MODIFIERS>----------------*/
 
 
@@ -353,7 +357,7 @@ contract BetterNameService {
     string memory _subdomain, string memory _domain, address subdomainOwner) 
   public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     bytes memory subdomain = _subdomain.toLowercase(false, false);
     _registerSubdomain(subdomain, domain, subdomainOwner, false);
   }
@@ -365,7 +369,7 @@ contract BetterNameService {
 /*----------------<BEGIN DOMAIN MANAGEMENT FUNCTIONS>----------------*/
   function transferDomain(string memory _domain, address recipient) public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].owner = recipient;
   }
 
@@ -373,14 +377,14 @@ contract BetterNameService {
   function setContent(string memory _domain, string memory content) 
   public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].content = content;
     emit ContentUpdated(keccak256(abi.encode(domain)), domain, content);
   }
 
   function deleteContent(string memory _domain) public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     delete domains[domain].content;
     emit ContentUpdated(keccak256(abi.encode(domain)), domain, domains[domain].content);
   }
@@ -390,7 +394,7 @@ contract BetterNameService {
   /*<BEGIN APPROVAL FUNCTIONS>*/
   function approveForSubdomain(string memory _domain, address user) public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].approvedForSubdomain[user] = true;
     emit ApprovedForDomain(keccak256(abi.encode(domain)), domain, user);
   }
@@ -398,7 +402,7 @@ contract BetterNameService {
   function disapproveForSubdomain(string memory _domain, address user) 
   public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].approvedForSubdomain[user] = false;
     emit DisapprovedForDomain(keccak256(abi.encode(domain)), domain, user);
   }
@@ -413,7 +417,7 @@ contract BetterNameService {
 
   function deleteDomain(string memory _domain) public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     _deleteDomain(domain);
   }
 
@@ -421,7 +425,7 @@ contract BetterNameService {
   public {
     bytes memory domain = _domain.toLowercase(true, true);
     bytes memory subdomain = _subdomain.toLowercase(false, false);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     _deleteDomain(subdomain.join(domain, 0x2e));
   }
   /*</END DELETION FUNCTIONS>*/
@@ -430,14 +434,14 @@ contract BetterNameService {
   /*<BEGIN RESTRICTION FUNCTIONS>*/
   function openPublicDomainRegistration(string memory _domain) public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].allowSubdomains = true;
     emit DomainRegistrationOpened(keccak256(abi.encode(domain)), domain);
   }
 
   function closePublicDomainRegistration(string memory _domain) public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].allowSubdomains = false;
     emit DomainRegistrationClosed(keccak256(abi.encode(domain)), domain);
   }
@@ -448,14 +452,14 @@ contract BetterNameService {
   function setDomainStorageSingle(string memory _domain, string memory key, string memory value) 
   public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     domains[domain].domainStorage[key] = value;
   }
 
   function setDomainStorageMany(string memory _domain, string[2][] memory kvPairs) 
   public {
     bytes memory domain = _domain.toLowercase(true, true);
-    require(domains[domain].owner == msg.sender, "Not domain owner");
+    requireOwner(domain, msg.sender);
     for(uint i = 0; i < kvPairs.length; i++) {
       domains[domain].domainStorage[kvPairs[i][0]] = kvPairs[i][1];
     }
