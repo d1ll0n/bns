@@ -58,10 +58,9 @@ library BnsLib {
     return true;
   }
 
-  function join(bytes memory self, bytes memory s2, bytes1 delimiter) 
+  function join(bytes memory self, bytes memory addStr, bytes1 delimiter) 
   internal pure returns (bytes memory) {
     /* Allow [0-9] [a-z] [-] Make [A-Z] lowercase */
-    bytes memory addStr = bytes(s2);
     uint retSize = self.length + addStr.length + 1;
     bytes memory ret = new bytes(retSize);
     for (uint i = 0; i < self.length; i ++) ret[i] = self[i];
