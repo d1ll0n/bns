@@ -1,5 +1,3 @@
-const assert = require('assert');
-const fs = require('fs')
 const ganache = require('ganache-cli');
 const Web3 = require('web3');
 const { expect } = require('chai')

@@ -1,5 +1,5 @@
 {
-  "name": "BetterNameService",
+  "name": "bns.js",
   "version": "1.0.0",
   "description": "Better name service than ENS, also supports email addresses",
   "main": "compile.js",
@@ -14,10 +14,9 @@
     "chai": "^4.2.0",
     "mocha": "^6.0.2",
     "solc": "^0.4.25",
-    "solium": "^1.2.3"
-  },
-  "dependencies": {
+    "solium": "^1.2.3",
     "ganache-cli": "^6.4.1",
     "web3": "^1.0.0-beta.48"
-  }
+  },
+  "dependencies": {}
 }
